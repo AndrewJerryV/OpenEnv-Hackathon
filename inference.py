@@ -30,10 +30,10 @@ def get_action():
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {"role": "system", "content": "Return ONLY one action like: search_logs database"},
-                {"role": "user", "content": "Next action?"}
+                {"role": "system", "content": "Output ONLY: search_logs <keyword>"},
+                {"role": "user", "content": "Next action"}
             ],
-            max_tokens=20
+            max_tokens=10
         )
         text = response.choices[0].message.content.strip().lower()
 
