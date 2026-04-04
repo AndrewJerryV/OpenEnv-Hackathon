@@ -17,25 +17,28 @@ class Action:
 class OrchestratorEnv:
     SCENARIOS = {
         "payment failure": {
-            "initial_logs": ["payment gateway timeout 504 on user checkout"],
-            "expected_keyword": "payment",
-            "expected_crm": "refund",
-            "expected_slack": "user",
-            "requires_crm": True
+            "initial_logs": ["[Alert] user_checkout_error: payment gateway latency spike detected at cluster-504"],
+            "keywords": ["payment", "gateway", "latency"],
+            "resolution_paths": {
+                "admin": {"update_crm": "refund", "send_slack": "user"},
+                "technical": {"run_command": "restart_service", "send_slack": "devops"}
+            }
         },
         "deployment crash": {
-            "initial_logs": ["FATAL error in pod 32 deployment manager"],
-            "expected_keyword": "crash",
-            "expected_crm": None,
-            "expected_slack": "devops",
-            "requires_crm": False
+            "initial_logs": ["[Alert] pod_crash_loop: FATAL signal 9 in pod-32-deploy-manager during sync"],
+            "keywords": ["crash", "pod", "deploy"],
+            "resolution_paths": {
+                "rollback": {"run_command": "rollback_deploy", "send_slack": "devops"},
+                "restart": {"run_command": "restart_cluster", "send_slack": "devops"}
+            }
         },
         "customer complaint": {
-            "initial_logs": ["user ticket: unable to login, site returns 500 error"],
-            "expected_keyword": "complaint",
-            "expected_crm": "resolved",
-            "expected_slack": "customer",
-            "requires_crm": True
+            "initial_logs": ["[Ticket#993] User states unable to login, site returns constant 500 error on auth endpoint"],
+            "keywords": ["complaint", "login", "auth", "500"],
+            "resolution_paths": {
+                "standard": {"update_crm": "resolved", "send_slack": "customer"},
+                "technical": {"run_command": "flush_cache", "send_slack": "devops"}
+            }
         }
     }
 
@@ -43,95 +46,148 @@ class OrchestratorEnv:
         self.scenario_name = random.choice(list(self.SCENARIOS.keys()))
         self.scenario = self.SCENARIOS[self.scenario_name]
         
+        # Calculate dynamic max score based on shortest optimal path
+        # Assume ideal actions = search_logs (1), mitigation (1), slack (1), finish (1) = 4 steps.
+        # Score = -4 (cost) + 15 (steps 3x5) + 10 (finish) + 3 (efficiency) = 24.
+        # Kept dynamic evaluation structure per request.
+        path_scores = []
+        for path in self.scenario["resolution_paths"].values():
+            steps = 1 + len(path) + 1
+            path_scores.append(-steps + (len(path) + 1) * 5 + 10 + 3)
+        self.max_score = float(max(path_scores)) if path_scores else 24.0
+
         self.state = {
             "task": self.scenario_name,
             "logs": self.scenario["initial_logs"].copy(),
-            "crm_status": "open",
-            "slack_messages": [],
             "action_history": [],
             "observations": [],
             "root_found": False,
-            "crm_updated": False,
+            "mitigated": False,
+            "mitigation_path": None,
             "notified": False,
             "done": False,
+            "noise_level": 0,
+            "max_score": self.max_score
         }
         return self.state
 
+    def add_observation(self, msg_type, content):
+        if self.state["noise_level"] > 2 and random.random() < 0.3:
+            noisy_additions = [
+                "[WARNING] Transient network jitter detected on feedback loop.",
+                "[INFO] Unrelated background process sync triggered.",
+                "[WARNING] Partial data corruption reported in telemetry stream."
+            ]
+            self.state["observations"].append(random.choice(noisy_additions))
+        self.state["observations"].append(f"[{msg_type}] {content}")
+
     def step(self, action):
-        reward = -1  # Base cost per step
+        reward = -1  
         error = None
         done = False
         
         action_repr = f"{action.type} {action.value}".strip()
         
         if action_repr in self.state["action_history"]:
-            reward -= 2  # Redundant action
-            self.state["observations"].append(f"[Error] Redundant action '{action_repr}'")
+            reward -= 2
+            self.state["noise_level"] += 1
+            self.add_observation("ERROR", "Action violates required sequence: Redundant duplicate.")
             return {"reward": reward, "done": done, "error": error}
             
         self.state["action_history"].append(action_repr)
 
         if action.type == "search_logs":
-            if action.value == self.scenario["expected_keyword"]:
-                self.state["root_found"] = True
-                reward += 5
-                self.state["observations"].append(f"[Success] Found root cause for {action.value}")
-            else:
-                self.state["observations"].append(f"[Error] No result for keyword '{action.value}'")
+            matched = False
+            for kw in self.scenario["keywords"]:
+                if action.value == kw:
+                    self.state["root_found"] = True
+                    reward += 5
+                    self.add_observation("INFO", f"Root cause likely identified for '{action.value}', proceed with mitigation.")
+                    self.state["logs"].append(f"[System] Root cause confirmed: {action.value}")
+                    matched = True
+                    break
+                elif action.value in kw or kw in action.value:
+                    if len(action.value) >= 3:
+                        reward += 2
+                        self.add_observation("WARNING", f"Partial match for '{action.value}', consider refining query.")
+                        matched = True
+                        break
+            if not matched:
+                reward -= 1
+                self.state["noise_level"] += 1
+                self.add_observation("ERROR", f"No log results found for '{action.value}'.")
 
-        elif action.type == "update_crm":
+        elif action.type in ["update_crm", "run_command"]:
             if not self.state["root_found"]:
                 reward -= 5
-                self.state["observations"].append("[Error] Cannot update CRM before finding root cause")
-            elif not self.scenario["requires_crm"]:
-                reward -= 5
-                self.state["observations"].append("[Error] CRM update not required for this task")
-            elif action.value == self.scenario["expected_crm"]:
-                self.state["crm_updated"] = True
-                self.state["crm_status"] = action.value
-                reward += 5
-                self.state["observations"].append(f"[Success] CRM updated to '{action.value}'")
+                self.state["noise_level"] += 1
+                self.add_observation("ERROR", f"Action violates required sequence: Cannot execute '{action.type}' before root cause is found.")
             else:
-                self.state["observations"].append(f"[Error] Invalid CRM status '{action.value}'")
+                valid_resolution = False
+                for path_name, path_data in self.scenario["resolution_paths"].items():
+                    if action.type in path_data and path_data[action.type] == action.value:
+                        self.state["mitigated"] = True
+                        self.state["mitigation_path"] = path_name
+                        reward += 5
+                        self.add_observation("INFO", f"System state stabilized post-action: '{action.value}' applied.")
+                        
+                        if action.type == "run_command":
+                            if action.value == "restart_service" or action.value == "restart_cluster":
+                                self.state["logs"].append("[System] Service restarted successfully, latency normalized")
+                            elif action.value == "rollback_deploy":
+                                self.state["logs"].append("[System] Deployment rolled back to stable version")
+                            elif action.value == "flush_cache":
+                                self.state["logs"].append("[System] Cache cleared, authentication flow restored")
+                            else:
+                                self.state["logs"].append(f"[System] Command '{action.value}' executed successfully")
+                        elif action.type == "update_crm":
+                            self.state["logs"].append(f"[System] CRM state updated to '{action.value}', issue stabilized")
+                        
+                        valid_resolution = True
+                        break
+                if not valid_resolution:
+                    reward -= 2
+                    self.state["noise_level"] += 1
+                    self.add_observation("ERROR", f"Invalid parameters or mechanism for {action.type}: '{action.value}'.")
 
         elif action.type == "send_slack":
-            if self.scenario["requires_crm"] and not self.state["crm_updated"]:
+            if not self.state["root_found"] or not self.state["mitigated"]:
                 reward -= 5
-                self.state["observations"].append("[Error] Cannot send slack before updating CRM")
-            elif not self.scenario["requires_crm"] and not self.state["root_found"]:
-                reward -= 5
-                self.state["observations"].append("[Error] Cannot send slack before finding root cause")
-            elif action.value == self.scenario["expected_slack"]:
-                self.state["notified"] = True
-                self.state["slack_messages"].append(action.value)
-                reward += 5
-                self.state["observations"].append(f"[Success] Slack sent to '{action.value}'")
+                self.state["noise_level"] += 1
+                self.add_observation("ERROR", "Action violates required sequence: Cannot notify prior to mitigation.")
             else:
-                self.state["observations"].append(f"[Error] Invalid Slack recipient '{action.value}'")
+                valid_slack = False
+                path_data = self.scenario["resolution_paths"][self.state["mitigation_path"]]
+                if "send_slack" in path_data and path_data["send_slack"] == action.value:
+                    self.state["notified"] = True
+                    reward += 5
+                    self.add_observation("INFO", f"Notification dispatched to '{action.value}'.")
+                    self.state["logs"].append(f"[System] Team notified via '{action.value}'")
+                    valid_slack = True
+                
+                if not valid_slack:
+                    reward -= 2
+                    self.state["noise_level"] += 1
+                    self.add_observation("ERROR", f"Invalid slack recipient '{action.value}' for current resolution path.")
 
         elif action.type == "finish_task":
             done = True
-            is_complete = False
-            if self.scenario["requires_crm"]:
-                is_complete = self.state["root_found"] and self.state["crm_updated"] and self.state["notified"]
-                ideal_steps = 4
-            else:
-                is_complete = self.state["root_found"] and self.state["notified"]
-                ideal_steps = 3
+            is_complete = self.state["root_found"] and self.state["mitigated"] and self.state["notified"]
 
             if is_complete:
-                reward += 10 # Task complete
-                if len(self.state["action_history"]) <= ideal_steps:
-                    reward += 3 # Efficient steps
-                self.state["observations"].append("[Success] Task correctly completed.")
+                reward += 10
+                if len(self.state["action_history"]) <= 4:
+                    reward += 3
+                self.add_observation("INFO", "Task correctly completed and closed.")
             else:
-                reward -= 10 # Wrong final answer
-                self.state["observations"].append("[Error] Task finished prematurely with incomplete steps.")
+                reward -= 10
+                self.add_observation("ERROR", "Action violates required sequence: Task abandoned prematurely.")
 
         else:
             reward -= 5
+            self.state["noise_level"] += 1
             error = f"Unknown action type: {action.type}"
-            self.state["observations"].append(f"[Error] Unknown action '{action.type}'")
+            self.add_observation("ERROR", f"Unknown tool execution attempted: '{action.type}'")
 
         self.state["done"] = done
         return {

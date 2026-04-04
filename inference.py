@@ -9,7 +9,7 @@ API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN) if HF_TOKEN else None
 
 MAX_STEPS = 6
 
@@ -32,18 +32,14 @@ def get_action(state):
     obs = state["observations"]
     
     system_prompt = (
-        "You are an AI agent resolving an issue. "
-        "Output ONLY an action from the allowed list: 'search_logs <keyword>', 'update_crm <status>', 'send_slack <message>', or 'finish_task'.\n"
-        "Do not output natural language, just the action.\n\n"
-        "Your task: Resolve the issue described in the initial logs.\n"
-        "Standard procedures based on task type:\n"
-        "- payment failure: search_logs payment -> update_crm refund -> send_slack user -> finish_task\n"
-        "- deployment crash: search_logs crash -> send_slack devops -> finish_task\n"
-        "- customer complaint: search_logs complaint -> update_crm resolved -> send_slack customer -> finish_task\n"
-        "Use previous observations to inform your next action, do not repeat failed actions."
+        "You are an AI resolving live infrastructure incidents dynamically.\n"
+        "Output ONLY the exact action string. No natural language.\n"
+        "Tools: 'search_logs <keyword>', 'update_crm <status>', 'run_command <cmd>', 'send_slack <message>', 'finish_task'.\n\n"
+        "Deduce root causes, apply mitigations, and notify teams in a logical sequential order.\n"
+        "Analyze [ERROR] or [WARNING] observations to adapt your strategy dynamically."
     )
     
-    user_prompt = f"Task: {task}\nInitial logs: {logs}\nAction History: {history}\nObservations: {obs}\nNext action:"
+    user_prompt = f"Task: {task}\nLogs: {logs}\nAction History: {history}\nObservations: {obs}\nNext action:"
     
     try:
         response = client.chat.completions.create(
@@ -60,6 +56,9 @@ def get_action(state):
         return "noop"
 
 async def main():
+    if not client:
+        print("[System] API token omitted, agent cannot hit external inference properly locally however structural validation format will proceed normally.")
+
     env = OrchestratorEnv()
 
     rewards: List[float] = []
@@ -89,8 +88,8 @@ async def main():
             if done:
                 break
 
-        # Max score is dynamically 19-33 depending on the scenario and perfection, scale loosely:
-        score = min(max(sum(rewards) / 33.0, 0.0), 1.0)
+        max_score = state.get("max_score", 24.0)
+        score = min(max(sum(rewards) / max_score, 0.0), 1.0)
         success = score > 0.3
 
     finally:
