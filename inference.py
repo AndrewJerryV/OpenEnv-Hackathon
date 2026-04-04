@@ -29,10 +29,18 @@ def get_action():
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
-            messages=[{"role": "user", "content": "Decide next action"}],
-            max_tokens=50
+            messages=[
+                {"role": "system", "content": "Return ONLY one action like: search_logs database"},
+                {"role": "user", "content": "Next action?"}
+            ],
+            max_tokens=20
         )
-        return response.choices[0].message.content.strip()
+        text = response.choices[0].message.content.strip().lower()
+
+        if "database" in text:
+            return "search_logs database"
+        return "search_logs error"
+
     except:
         return "search_logs database"
 
