@@ -29,19 +29,21 @@ def get_action(state):
     task = state["task"]
     logs = state["logs"]
     history = state["action_history"]
+    obs = state["observations"]
     
     system_prompt = (
         "You are an AI agent resolving an issue. "
         "Output ONLY an action from the allowed list: 'search_logs <keyword>', 'update_crm <status>', 'send_slack <message>', or 'finish_task'.\n"
         "Do not output natural language, just the action.\n\n"
         "Your task: Resolve the issue described in the initial logs.\n"
-        "Standard procedures:\n"
+        "Standard procedures based on task type:\n"
         "- payment failure: search_logs payment -> update_crm refund -> send_slack user -> finish_task\n"
         "- deployment crash: search_logs crash -> send_slack devops -> finish_task\n"
-        "- customer complaint: search_logs complaint -> update_crm resolved -> send_slack customer -> finish_task"
+        "- customer complaint: search_logs complaint -> update_crm resolved -> send_slack customer -> finish_task\n"
+        "Use previous observations to inform your next action, do not repeat failed actions."
     )
     
-    user_prompt = f"Task: {task}\nInitial logs: {logs}\nAction History: {history}\nNext action:"
+    user_prompt = f"Task: {task}\nInitial logs: {logs}\nAction History: {history}\nObservations: {obs}\nNext action:"
     
     try:
         response = client.chat.completions.create(
@@ -87,7 +89,8 @@ async def main():
             if done:
                 break
 
-        score = min(sum(rewards) / 33.0, 1.0)
+        # Max score is dynamically 19-33 depending on the scenario and perfection, scale loosely:
+        score = min(max(sum(rewards) / 33.0, 0.0), 1.0)
         success = score > 0.3
 
     finally:
