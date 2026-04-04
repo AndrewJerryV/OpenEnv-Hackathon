@@ -90,7 +90,7 @@ async def main():
 
         max_score = state.get("max_score", 24.0)
         score = min(max(sum(rewards) / max_score, 0.0), 1.0)
-        success = score > 0.3
+        success = score > 0.6
 
     finally:
         env.close()

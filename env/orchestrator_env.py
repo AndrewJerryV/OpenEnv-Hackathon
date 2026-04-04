@@ -46,10 +46,6 @@ class OrchestratorEnv:
         self.scenario_name = random.choice(list(self.SCENARIOS.keys()))
         self.scenario = self.SCENARIOS[self.scenario_name]
         
-        # Calculate dynamic max score based on shortest optimal path
-        # Assume ideal actions = search_logs (1), mitigation (1), slack (1), finish (1) = 4 steps.
-        # Score = -4 (cost) + 15 (steps 3x5) + 10 (finish) + 3 (efficiency) = 24.
-        # Kept dynamic evaluation structure per request.
         path_scores = []
         for path in self.scenario["resolution_paths"].values():
             steps = 1 + len(path) + 1
@@ -74,10 +70,12 @@ class OrchestratorEnv:
     def add_observation(self, msg_type, content):
         if self.state["noise_level"] > 2 and random.random() < 0.3:
             noisy_additions = [
-                "[WARNING] Transient network jitter detected on feedback loop.",
+                "[WARNING] Transient network jitter detected.",
                 "[INFO] Unrelated background process sync triggered.",
-                "[WARNING] Partial data corruption reported in telemetry stream."
+                "[WARNING] Partial data corruption reported."
             ]
+            if self.state["noise_level"] > 5 and random.random() < 0.5:
+                noisy_additions.append("[CRITICAL] Ghost processes overriding state. Recalibration advised.")
             self.state["observations"].append(random.choice(noisy_additions))
         self.state["observations"].append(f"[{msg_type}] {content}")
 
@@ -91,7 +89,8 @@ class OrchestratorEnv:
         if action_repr in self.state["action_history"]:
             reward -= 2
             self.state["noise_level"] += 1
-            self.add_observation("ERROR", "Action violates required sequence: Redundant duplicate.")
+            self.add_observation("ERROR", "Sequence violation detected: Redundant duplicate action.")
+            if self.state["noise_level"] > 3: reward -= 1
             return {"reward": reward, "done": done, "error": error}
             
         self.state["action_history"].append(action_repr)
@@ -102,26 +101,27 @@ class OrchestratorEnv:
                 if action.value == kw:
                     self.state["root_found"] = True
                     reward += 5
-                    self.add_observation("INFO", f"Root cause likely identified for '{action.value}', proceed with mitigation.")
+                    self.add_observation("INFO", "Root cause confirmed, mitigation recommended.")
                     self.state["logs"].append(f"[System] Root cause confirmed: {action.value}")
                     matched = True
                     break
                 elif action.value in kw or kw in action.value:
                     if len(action.value) >= 3:
                         reward += 2
-                        self.add_observation("WARNING", f"Partial match for '{action.value}', consider refining query.")
+                        self.add_observation("WARNING", "Partial match, consider refining query.")
+                        self.state["logs"].append(f"[System] Partial diagnostic signal detected for '{action.value}'")
                         matched = True
                         break
             if not matched:
                 reward -= 1
                 self.state["noise_level"] += 1
-                self.add_observation("ERROR", f"No log results found for '{action.value}'.")
+                self.add_observation("WARNING", f"Action ineffective, refine approach. No log results found for '{action.value}'.")
 
         elif action.type in ["update_crm", "run_command"]:
             if not self.state["root_found"]:
                 reward -= 5
                 self.state["noise_level"] += 1
-                self.add_observation("ERROR", f"Action violates required sequence: Cannot execute '{action.type}' before root cause is found.")
+                self.add_observation("ERROR", f"Sequence violation detected: Cannot execute '{action.type}' before root cause is found.")
             else:
                 valid_resolution = False
                 for path_name, path_data in self.scenario["resolution_paths"].items():
@@ -141,20 +141,20 @@ class OrchestratorEnv:
                             else:
                                 self.state["logs"].append(f"[System] Command '{action.value}' executed successfully")
                         elif action.type == "update_crm":
-                            self.state["logs"].append(f"[System] CRM state updated to '{action.value}', issue stabilized")
+                            self.state["logs"].append(f"[System] System state updated, issue stabilized via CRM status '{action.value}'")
                         
                         valid_resolution = True
                         break
                 if not valid_resolution:
                     reward -= 2
                     self.state["noise_level"] += 1
-                    self.add_observation("ERROR", f"Invalid parameters or mechanism for {action.type}: '{action.value}'.")
+                    self.add_observation("WARNING", f"Action ineffective, refine approach. Invalid parameters for {action.type}: '{action.value}'.")
 
         elif action.type == "send_slack":
             if not self.state["root_found"] or not self.state["mitigated"]:
                 reward -= 5
                 self.state["noise_level"] += 1
-                self.add_observation("ERROR", "Action violates required sequence: Cannot notify prior to mitigation.")
+                self.add_observation("ERROR", "Sequence violation detected: Cannot notify prior to mitigation.")
             else:
                 valid_slack = False
                 path_data = self.scenario["resolution_paths"][self.state["mitigation_path"]]
@@ -168,7 +168,7 @@ class OrchestratorEnv:
                 if not valid_slack:
                     reward -= 2
                     self.state["noise_level"] += 1
-                    self.add_observation("ERROR", f"Invalid slack recipient '{action.value}' for current resolution path.")
+                    self.add_observation("WARNING", f"Action ineffective, refine approach. Invalid slack recipient '{action.value}'.")
 
         elif action.type == "finish_task":
             done = True
@@ -181,13 +181,16 @@ class OrchestratorEnv:
                 self.add_observation("INFO", "Task correctly completed and closed.")
             else:
                 reward -= 10
-                self.add_observation("ERROR", "Action violates required sequence: Task abandoned prematurely.")
+                self.add_observation("ERROR", "Sequence violation detected: Task abandoned prematurely.")
 
         else:
             reward -= 5
             self.state["noise_level"] += 1
             error = f"Unknown action type: {action.type}"
-            self.add_observation("ERROR", f"Unknown tool execution attempted: '{action.type}'")
+            self.add_observation("ERROR", f"Sequence violation detected: Unknown tool attempt.")
+
+        if self.state["noise_level"] > 3:
+            reward -= 1
 
         self.state["done"] = done
         return {
