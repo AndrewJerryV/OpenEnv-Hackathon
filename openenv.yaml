@@ -1,0 +1,13 @@
+name: agentic-orchestrator
+version: 1.0
+
+entrypoint: inference.py
+
+environment:
+  docker:
+    build: .
+
+tasks:
+  - name: agentic_orchestrator
+    description: Multi-step agent environment with tool usage
+    max_steps: 6
