@@ -196,8 +196,25 @@ class OrchestratorEnv:
         return {
             "reward": reward,
             "done": done,
-            "error": error
+            "error": error,
+            "score": self.compute_score() if done else None
         }
 
     def close(self):
         pass
+
+    def compute_score(self):
+        score = 0.0
+
+        if self.state["root_found"]:
+            score += 0.3
+        if self.state["mitigated"]:
+            score += 0.3
+        if self.state["notified"]:
+            score += 0.3
+
+        steps = len(self.state["action_history"])
+        if steps <= 4:
+            score += 0.1
+
+        return min(max(score, 0.01), 0.99)

@@ -89,7 +89,10 @@ async def main():
                 break
 
         max_score = state.get("max_score", 24.0)
-        score = min(max(sum(rewards) / max_score, 0.0), 1.0)
+        # use environment grader score
+        score = result.get("score", 0.5)
+        # enforce strict (0,1)
+        score = min(max(score, 0.01), 0.99)
         success = score > 0.6
 
     finally:
