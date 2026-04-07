@@ -11,14 +11,23 @@ tasks:
   - name: payment_failure
     description: Resolve payment gateway issue
     max_steps: 8
-    grader: true
+    grader:
+      type: log_score
+      metric: score
+      source: "[END]"
 
   - name: deployment_crash
     description: Fix deployment crash issue
     max_steps: 8
-    grader: true
+    grader:
+      type: log_score
+      metric: score
+      source: "[END]"
 
   - name: customer_complaint
     description: Handle customer complaint issue
     max_steps: 8
-    grader: true
+    grader:
+      type: log_score
+      metric: score
+      source: "[END]"
