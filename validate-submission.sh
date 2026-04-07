@@ -10,19 +10,19 @@
 #   - curl (usually pre-installed)
 #
 # Run:
-#   curl -fsSL https://raw.githubusercontent.com/AndrewJerryV/OpenEnv-Hackathon/main/validate-submission.sh | bash -s -- <ping_url> [repo_dir]
+#   curl -fsSL https://raw.githubusercontent.com/AndrewJerryV/OpenEnv-Hackathon/main/validate-submission.sh | bash -s -- https://andrewjerryv-openenv-hackathon.hf.space .
 #
 #   Or download and run locally:
 #     chmod +x validate-submission.sh
-#     ./validate-submission.sh <ping_url> [repo_dir]
+#     ./validate-submission.sh https://andrewjerryv-openenv-hackathon.hf.space .
 #
 # Arguments:
 #   ping_url   Your HuggingFace Space URL (e.g. https://your-space.hf.space)
 #   repo_dir   Path to your repo (default: current directory)
 #
 # Examples:
-#   ./validate-submission.sh https://my-team.hf.space
-#   ./validate-submission.sh https://my-team.hf.space ./my-repo
+#   ./validate-submission.sh https://andrewjerryv-openenv-hackathon.hf.space
+#   ./validate-submission.sh https://andrewjerryv-openenv-hackathon.hf.space .
 #
 
 set -uo pipefail
