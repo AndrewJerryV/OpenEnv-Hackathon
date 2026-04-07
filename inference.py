@@ -155,7 +155,13 @@ async def main():
 
         for step in range(1, MAX_STEPS + 1):
             thought, action_str = get_action(state)
-            action = Action.parse(action_str)
+            
+            try:
+                action = Action.parse(action_str)
+            except Exception as e:
+                print(f"[ERROR] Failed to parse action '{action_str}': {e}")
+                action = Action(type="noop", value="")
+            
             result = env.step(action)
 
             if hasattr(result, "metadata"):
