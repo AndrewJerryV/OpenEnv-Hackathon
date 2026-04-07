@@ -169,15 +169,13 @@ async def main():
             # Update state for next iteration
             state = env.state
 
-        # Use environment grader score
-        score = result.get("score") if result.get("score") is not None else 0.0
-        # Enforce strict (0,1) range to satisfy the validator
-        score = min(max(score, 0.01), 0.99)
+        score = result.get("score") if result.get("score") is not None else 0.01
+        score = min(max(score, 0.01), 0.99) # Extra safety clamp
         success = score > 0.6
+        log_end(success, steps, score, rewards)
 
     finally:
         env.close()
-        log_end(success, steps, score, rewards)
 
 if __name__ == "__main__":
     asyncio.run(main())
