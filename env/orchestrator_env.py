@@ -15,8 +15,9 @@ class Action:
         return Action("noop", "")
 
 class OrchestratorEnv:
+    # UPDATED: Keys now use underscores to match openenv.yaml tasks
     SCENARIOS = {
-        "payment failure": {
+        "payment_failure": {
             "initial_logs": ["[Alert] user_checkout_error: payment gateway latency spike detected at cluster-504"],
             "keywords": ["payment", "gateway", "latency"],
             "resolution_paths": {
@@ -24,7 +25,7 @@ class OrchestratorEnv:
                 "technical": {"run_command": "restart_service", "send_slack": "devops"}
             }
         },
-        "deployment crash": {
+        "deployment_crash": {
             "initial_logs": ["[Alert] pod_crash_loop: FATAL signal 9 in pod-32-deploy-manager during sync"],
             "keywords": ["crash", "pod", "deploy"],
             "resolution_paths": {
@@ -32,7 +33,7 @@ class OrchestratorEnv:
                 "restart": {"run_command": "restart_cluster", "send_slack": "devops"}
             }
         },
-        "customer complaint": {
+        "customer_complaint": {
             "initial_logs": ["[Ticket#993] User states unable to login, site returns constant 500 error on auth endpoint"],
             "keywords": ["complaint", "login", "auth", "500"],
             "resolution_paths": {
@@ -42,8 +43,27 @@ class OrchestratorEnv:
         }
     }
 
-    def reset(self):
-        self.scenario_name = random.choice(list(self.SCENARIOS.keys()))
+    # ── Feature 2: Operational Cost Dictionary ──────────────────────────
+    # Not all actions are equal. The agent is penalised for expensive ops.
+    ACTION_COSTS = {
+        "search_logs": 0.1,    # Cheap / Safe
+        "update_crm":  0.2,    # Administrative
+        "send_slack":  0.3,    # Noisy
+        "run_command": 0.7,    # Expensive / High-Risk
+        "finish_task": 0.0,    # Free – closing the loop shouldn't cost
+        "noop":        0.0,
+    }
+
+    # ── Feature 3: Chaos / Tool Flakiness Rate ─────────────────────────
+    TOOL_FLAKINESS_RATE = 0.15   # 15 % failure for run_command
+
+    def reset(self, scenario_name=None):
+        # UPDATED: Allow resetting to a specific scenario provided by the orchestrator
+        if scenario_name and scenario_name in self.SCENARIOS:
+            self.scenario_name = scenario_name
+        else:
+            self.scenario_name = random.choice(list(self.SCENARIOS.keys()))
+            
         self.scenario = self.SCENARIOS[self.scenario_name]
         
         path_scores = []
@@ -63,7 +83,10 @@ class OrchestratorEnv:
             "notified": False,
             "done": False,
             "noise_level": 0,
-            "max_score": self.max_score
+            "max_score": self.max_score,
+            # ── New state trackers for cost-aware rewards ───────────
+            "accumulated_cost": 0.0,
+            "chaos_failures": 0,
         }
         return self.state
 
@@ -85,7 +108,12 @@ class OrchestratorEnv:
         done = False
         
         action_repr = f"{action.type} {action.value}".strip()
-        
+
+        # ── Feature 2: Deduct action cost ───────────────────────────
+        cost = self.ACTION_COSTS.get(action.type, 0.5)   # Unknown = expensive
+        reward -= cost
+        self.state["accumulated_cost"] += cost
+
         if action_repr in self.state["action_history"]:
             reward -= 2
             self.state["noise_level"] += 1
@@ -123,32 +151,43 @@ class OrchestratorEnv:
                 self.state["noise_level"] += 1
                 self.add_observation("ERROR", f"Sequence violation detected: Cannot execute '{action.type}' before root cause is found.")
             else:
-                valid_resolution = False
-                for path_name, path_data in self.scenario["resolution_paths"].items():
-                    if action.type in path_data and path_data[action.type] == action.value:
-                        self.state["mitigated"] = True
-                        self.state["mitigation_path"] = path_name
-                        reward += 5
-                        self.add_observation("INFO", f"System state stabilized post-action: '{action.value}' applied.")
-                        
-                        if action.type == "run_command":
-                            if action.value == "restart_service" or action.value == "restart_cluster":
-                                self.state["logs"].append("[System] Service restarted successfully, latency normalized")
-                            elif action.value == "rollback_deploy":
-                                self.state["logs"].append("[System] Deployment rolled back to stable version")
-                            elif action.value == "flush_cache":
-                                self.state["logs"].append("[System] Cache cleared, authentication flow restored")
-                            else:
-                                self.state["logs"].append(f"[System] Command '{action.value}' executed successfully")
-                        elif action.type == "update_crm":
-                            self.state["logs"].append(f"[System] System state updated, issue stabilized via CRM status '{action.value}'")
-                        
-                        valid_resolution = True
-                        break
-                if not valid_resolution:
+                # ── Feature 3: Chaos – 15 % failure rate for run_command ──
+                if action.type == "run_command" and random.random() < self.TOOL_FLAKINESS_RATE:
+                    # Flaky failure: do NOT mark mitigated, return timeout
+                    self.state["chaos_failures"] += 1
                     reward -= 2
                     self.state["noise_level"] += 1
-                    self.add_observation("WARNING", f"Action ineffective, refine approach. Invalid parameters for {action.type}: '{action.value}'.")
+                    self.add_observation("ERROR", f"Connection timeout: '{action.value}' did not respond within 30 s. Retry recommended.")
+                    self.state["logs"].append(f"[System] TIMEOUT executing '{action.value}' – connection refused by upstream host")
+                    # Remove this action from history so the agent can retry it
+                    self.state["action_history"].remove(action_repr)
+                else:
+                    valid_resolution = False
+                    for path_name, path_data in self.scenario["resolution_paths"].items():
+                        if action.type in path_data and path_data[action.type] == action.value:
+                            self.state["mitigated"] = True
+                            self.state["mitigation_path"] = path_name
+                            reward += 5
+                            self.add_observation("INFO", f"System state stabilized post-action: '{action.value}' applied.")
+                            
+                            if action.type == "run_command":
+                                if action.value == "restart_service" or action.value == "restart_cluster":
+                                    self.state["logs"].append("[System] Service restarted successfully, latency normalized")
+                                elif action.value == "rollback_deploy":
+                                    self.state["logs"].append("[System] Deployment rolled back to stable version")
+                                elif action.value == "flush_cache":
+                                    self.state["logs"].append("[System] Cache cleared, authentication flow restored")
+                                else:
+                                    self.state["logs"].append(f"[System] Command '{action.value}' executed successfully")
+                            elif action.type == "update_crm":
+                                self.state["logs"].append(f"[System] System state updated, issue stabilized via CRM status '{action.value}'")
+                            
+                            valid_resolution = True
+                            break
+                    if not valid_resolution:
+                        reward -= 2
+                        self.state["noise_level"] += 1
+                        self.add_observation("WARNING", f"Action ineffective, refine approach. Invalid parameters for {action.type}: '{action.value}'.")
 
         elif action.type == "send_slack":
             if not self.state["root_found"] or not self.state["mitigated"]:
@@ -196,8 +235,36 @@ class OrchestratorEnv:
         return {
             "reward": reward,
             "done": done,
-            "error": error
+            "error": error,
+            "score": self.compute_score() if done else None
         }
 
     def close(self):
         pass
+
+    def compute_score(self):
+        score = 0.0
+
+        if self.state["root_found"]:
+            score += 0.3
+        if self.state["mitigated"]:
+            score += 0.3
+        if self.state["notified"]:
+            score += 0.3
+
+        steps = len(self.state["action_history"])
+        if steps <= 4:
+            score += 0.1
+
+        # ── Feature 2: Cost-aware score penalty ─────────────────────
+        # Penalise accumulated operational cost (scaled so max ~1.5 cost
+        # maps to ~0.15 score deduction, keeping the range meaningful)
+        cost_penalty = self.state["accumulated_cost"] * 0.1
+        score -= cost_penalty
+
+        # ── Feature 3: Small bonus for surviving chaos failures ─────
+        if self.state["chaos_failures"] > 0 and self.state["mitigated"]:
+            score += 0.05   # resilience bonus
+
+        # This clamping ensures scores are strictly (0, 1)
+        return min(max(score, 0.01), 0.99)

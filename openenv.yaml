@@ -8,6 +8,14 @@ environment:
     build: .
 
 tasks:
-  - name: agentic_orchestrator
-    description: Multi-step agent environment with tool usage
+  - name: payment_failure
+    description: Resolve payment gateway issue
+    max_steps: 6
+
+  - name: deployment_crash
+    description: Fix deployment crash issue
+    max_steps: 6
+
+  - name: customer_complaint
+    description: Handle customer complaint issue
     max_steps: 6
