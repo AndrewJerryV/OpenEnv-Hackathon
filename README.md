@@ -1,12 +1,10 @@
 ---
-title: OpenEnv Hackathon
-emoji: 👀
-colorFrom: indigo
-colorTo: green
+title: EIRA — Elite Incident Response Agent
+emoji: ⚡
+colorFrom: purple
+colorTo: indigo
 sdk: docker
 pinned: false
-license: mit
-short_description: Stateful RL environment for multi-tool AI agents
 ---
 
 <p align="center">
