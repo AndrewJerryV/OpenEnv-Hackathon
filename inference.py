@@ -180,10 +180,11 @@ async def main():
             # Update state for next iteration
             state = env.state
 
-        score = result_info.get("score", 0.01) if "result_info" in locals() else 0.01
-        score = min(max(score, 0.01), 0.99) # Extra safety clamp
-        success = score > 0.6
-        log_end(success, steps, score, rewards)
+        final_score = result_info.get("score", 0.01) if 'result_info' in locals() else 0.01
+        final_score = min(max(final_score, 0.01), 0.99)
+
+        success = final_score > 0.6
+        log_end(success, steps, final_score, rewards)
 
     finally:
         env.close()
