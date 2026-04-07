@@ -48,7 +48,7 @@ def get_action(state):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=20
+            max_tokens=50
         )
         text = response.choices[0].message.content.strip().split('\n')[-1].lower()
         return text
@@ -92,7 +92,7 @@ async def main():
                 break
 
         # Use environment grader score
-        score = result.get("score", 0.5)
+        score = result.get("score") if result.get("score") is not None else 0.0
         # Enforce strict (0,1) range to satisfy the validator
         score = min(max(score, 0.01), 0.99)
         success = score > 0.6
