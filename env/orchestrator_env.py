@@ -14,7 +14,11 @@ class Action:
             return Action(parts[0], "")
         return Action("noop", "")
 
-class OrchestratorEnv:
+from openenv.core import Environment
+
+from openenv.core import Environment, Observation
+
+class OrchestratorEnv(Environment):
     SCENARIOS = {
         "payment_failure": {
             "initial_logs": ["[Alert] user_checkout_error: payment gateway latency spike detected at cluster-504"],
@@ -69,7 +73,7 @@ class OrchestratorEnv:
             path_scores.append(-steps + (len(path) + 1) * 5 + 10 + 3)
         self.max_score = float(max(path_scores)) if path_scores else 24.0
 
-        self.state = {
+        self._state = {
             "task": self.scenario_name,
             "logs": self.scenario["initial_logs"].copy(),
             "action_history": [],
@@ -84,19 +88,23 @@ class OrchestratorEnv:
             "accumulated_cost": 0.0,
             "chaos_failures": 0,
         }
-        return self.state
+        return Observation(
+            done=False,
+            reward=0.0,
+            metadata=self._state
+        )
 
     def add_observation(self, msg_type, content):
-        if self.state["noise_level"] > 2 and random.random() < 0.3:
+        if self._state["noise_level"] > 2 and random.random() < 0.3:
             noisy_additions = [
                 "[WARNING] Transient network jitter detected.",
                 "[INFO] Unrelated background process sync triggered.",
                 "[WARNING] Partial data corruption reported."
             ]
-            if self.state["noise_level"] > 5 and random.random() < 0.5:
+            if self._state["noise_level"] > 5 and random.random() < 0.5:
                 noisy_additions.append("[CRITICAL] Ghost processes overriding state. Recalibration advised.")
-            self.state["observations"].append(random.choice(noisy_additions))
-        self.state["observations"].append(f"[{msg_type}] {content}")
+            self._state["observations"].append(random.choice(noisy_additions))
+        self._state["observations"].append(f"[{msg_type}] {content}")
 
     def step(self, action):
         reward = -1  
@@ -108,108 +116,108 @@ class OrchestratorEnv:
         # ── Feature 2: Deduct action cost ───────────────────────────
         cost = self.ACTION_COSTS.get(action.type, 0.5)   # Unknown = expensive
         reward -= cost
-        self.state["accumulated_cost"] += cost
+        self._state["accumulated_cost"] += cost
 
-        if action_repr in self.state["action_history"]:
+        if action_repr in self._state["action_history"]:
             reward -= 2
-            self.state["noise_level"] += 1
+            self._state["noise_level"] += 1
             self.add_observation("ERROR", "Sequence violation detected: Redundant duplicate action.")
-            if self.state["noise_level"] > 3: reward -= 1
+            if self._state["noise_level"] > 3: reward -= 1
             return {"reward": reward, "done": done, "error": error}
             
-        self.state["action_history"].append(action_repr)
+        self._state["action_history"].append(action_repr)
 
         if action.type == "search_logs":
             matched = False
             for kw in self.scenario["keywords"]:
                 if action.value == kw:
-                    self.state["root_found"] = True
+                    self._state["root_found"] = True
                     reward += 5
                     self.add_observation("INFO", "Root cause confirmed, mitigation recommended.")
-                    self.state["logs"].append(f"[System] Root cause confirmed: {action.value}")
+                    self._state["logs"].append(f"[System] Root cause confirmed: {action.value}")
                     matched = True
                     break
                 elif action.value in kw or kw in action.value:
                     if len(action.value) >= 3:
                         reward += 2
                         self.add_observation("WARNING", "Partial match, consider refining query.")
-                        self.state["logs"].append(f"[System] Partial diagnostic signal detected for '{action.value}'")
+                        self._state["logs"].append(f"[System] Partial diagnostic signal detected for '{action.value}'")
                         matched = True
                         break
             if not matched:
                 reward -= 1
-                self.state["noise_level"] += 1
+                self._state["noise_level"] += 1
                 self.add_observation("WARNING", f"Action ineffective, refine approach. No log results found for '{action.value}'.")
 
         elif action.type in ["update_crm", "run_command"]:
-            if not self.state["root_found"]:
+            if not self._state["root_found"]:
                 reward -= 5
-                self.state["noise_level"] += 1
+                self._state["noise_level"] += 1
                 self.add_observation("ERROR", f"Sequence violation detected: Cannot execute '{action.type}' before root cause is found.")
             else:
                 # ── Feature 3: Chaos – 15 % failure rate for run_command ──
                 if action.type == "run_command" and random.random() < self.TOOL_FLAKINESS_RATE:
-                    self.state["chaos_failures"] += 1
+                    self._state["chaos_failures"] += 1
                     reward -= 2
-                    self.state["noise_level"] += 1
+                    self._state["noise_level"] += 1
                     self.add_observation("ERROR", f"Connection timeout: '{action.value}' did not respond within 30 s. Retry recommended.")
-                    self.state["logs"].append(f"[System] TIMEOUT executing '{action.value}' – connection refused by upstream host")
-                    self.state["action_history"].remove(action_repr)
+                    self._state["logs"].append(f"[System] TIMEOUT executing '{action.value}' – connection refused by upstream host")
+                    self._state["action_history"].remove(action_repr)
                 else:
                     valid_resolution = False
                     for path_name, path_data in self.scenario["resolution_paths"].items():
                         if action.type in path_data and path_data[action.type] == action.value:
-                            self.state["mitigated"] = True
-                            self.state["mitigation_path"] = path_name
+                            self._state["mitigated"] = True
+                            self._state["mitigation_path"] = path_name
                             reward += 5
                             self.add_observation("INFO", f"System state stabilized post-action: '{action.value}' applied.")
                             
                             if action.type == "run_command":
                                 if action.value == "restart_service" or action.value == "restart_cluster":
-                                    self.state["logs"].append("[System] Service restarted successfully, latency normalized")
+                                    self._state["logs"].append("[System] Service restarted successfully, latency normalized")
                                 elif action.value == "rollback_deploy":
-                                    self.state["logs"].append("[System] Deployment rolled back to stable version")
+                                    self._state["logs"].append("[System] Deployment rolled back to stable version")
                                 elif action.value == "flush_cache":
-                                    self.state["logs"].append("[System] Cache cleared, authentication flow restored")
+                                    self._state["logs"].append("[System] Cache cleared, authentication flow restored")
                                 else:
-                                    self.state["logs"].append(f"[System] Command '{action.value}' executed successfully")
+                                    self._state["logs"].append(f"[System] Command '{action.value}' executed successfully")
                             elif action.type == "update_crm":
-                                self.state["logs"].append(f"[System] System state updated, issue stabilized via CRM status '{action.value}'")
+                                self._state["logs"].append(f"[System] System state updated, issue stabilized via CRM status '{action.value}'")
                             
                             valid_resolution = True
                             break
                     if not valid_resolution:
                         reward -= 2
-                        self.state["noise_level"] += 1
+                        self._state["noise_level"] += 1
                         self.add_observation("WARNING", f"Action ineffective, refine approach. Invalid parameters for {action.type}: '{action.value}'.")
 
         elif action.type == "send_slack":
-            if not self.state["root_found"] or not self.state["mitigated"]:
+            if not self._state["root_found"] or not self._state["mitigated"]:
                 reward -= 5
-                self.state["noise_level"] += 1
+                self._state["noise_level"] += 1
                 self.add_observation("ERROR", "Sequence violation detected: Cannot notify prior to mitigation.")
             else:
                 valid_slack = False
-                path_data = self.scenario["resolution_paths"][self.state["mitigation_path"]]
+                path_data = self.scenario["resolution_paths"][self._state["mitigation_path"]]
                 if "send_slack" in path_data and path_data["send_slack"] == action.value:
-                    self.state["notified"] = True
+                    self._state["notified"] = True
                     reward += 5
                     self.add_observation("INFO", f"Notification dispatched to '{action.value}'.")
-                    self.state["logs"].append(f"[System] Team notified via '{action.value}'")
+                    self._state["logs"].append(f"[System] Team notified via '{action.value}'")
                     valid_slack = True
                 
                 if not valid_slack:
                     reward -= 2
-                    self.state["noise_level"] += 1
+                    self._state["noise_level"] += 1
                     self.add_observation("WARNING", f"Action ineffective, refine approach. Invalid slack recipient '{action.value}'.")
 
         elif action.type == "finish_task":
             done = True
-            is_complete = self.state["root_found"] and self.state["mitigated"] and self.state["notified"]
+            is_complete = self._state["root_found"] and self._state["mitigated"] and self._state["notified"]
 
             if is_complete:
                 reward += 10
-                if len(self.state["action_history"]) <= 4:
+                if len(self._state["action_history"]) <= 4:
                     reward += 3
                 self.add_observation("INFO", "Task correctly completed and closed.")
             else:
@@ -218,45 +226,51 @@ class OrchestratorEnv:
 
         else:
             reward -= 5
-            self.state["noise_level"] += 1
+            self._state["noise_level"] += 1
             error = f"Unknown action type: {action.type}"
             self.add_observation("ERROR", f"Sequence violation detected: Unknown tool attempt.")
 
-        if self.state["noise_level"] > 3:
+        if self._state["noise_level"] > 3:
             reward -= 1
 
-        self.state["done"] = done
-        return {
-            "observation": self.state,
-            "reward": reward,
-            "done": done,
-            "info": {
-                "score": self.compute_score() if done else 0.0,
-                "error": error
+        self._state["done"] = done
+        return Observation(
+            done=done,
+            reward=reward,
+            metadata={
+                **self._state,
+                "info": {
+                    "score": self.compute_score() if done else 0.0,
+                    "error": error
+                }
             }
-        }
+        )
 
     def close(self):
         pass
 
+    @property
+    def state(self):
+        return self._state
+
     def compute_score(self):
         score = 0.0
 
-        if self.state["root_found"]:
+        if self._state["root_found"]:
             score += 0.3
-        if self.state["mitigated"]:
+        if self._state["mitigated"]:
             score += 0.3
-        if self.state["notified"]:
+        if self._state["notified"]:
             score += 0.3
 
-        steps = len(self.state["action_history"])
+        steps = len(self._state["action_history"])
         if steps <= 4:
             score += 0.1
 
-        cost_penalty = self.state["accumulated_cost"] * 0.1
+        cost_penalty = self._state["accumulated_cost"] * 0.1
         score -= cost_penalty
 
-        if self.state["chaos_failures"] > 0 and self.state["mitigated"]:
+        if self._state["chaos_failures"] > 0 and self._state["mitigated"]:
             score += 0.05   # resilience bonus
 
         return min(max(score, 0.01), 0.99)

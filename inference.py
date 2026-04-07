@@ -37,6 +37,10 @@ def get_action(state):
     Format:  THOUGHT: <reasoning> | ACTION: <command>
     Falls back gracefully if the LLM doesn't follow the format.
     """
+    # Handle both plain dicts and OpenEnv Observation objects
+    if hasattr(state, "metadata"):
+        state = state.metadata
+    
     task = state["task"]
     logs = state["logs"]
     history = state["action_history"]
@@ -154,9 +158,16 @@ async def main():
             action = Action.parse(action_str)
             result = env.step(action)
 
-            reward = result["reward"]
-            done = result["done"]
-            error = result.get("error")
+            if hasattr(result, "metadata"):
+                reward = result.reward
+                done = result.done
+                error = result.metadata.get("info", {}).get("error")
+                result_info = result.metadata.get("info", {})
+            else:
+                reward = result["reward"]
+                done = result["done"]
+                error = result.get("info", {}).get("error") if "info" in result else result.get("error")
+                result_info = result.get("info", {})
 
             rewards.append(reward)
             steps = step
@@ -169,7 +180,7 @@ async def main():
             # Update state for next iteration
             state = env.state
 
-        score = result.get("score") if result.get("score") is not None else 0.01
+        score = result_info.get("score", 0.01) if "result_info" in locals() else 0.01
         score = min(max(score, 0.01), 0.99) # Extra safety clamp
         success = score > 0.6
         log_end(success, steps, score, rewards)
