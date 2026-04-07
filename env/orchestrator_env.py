@@ -15,8 +15,9 @@ class Action:
         return Action("noop", "")
 
 class OrchestratorEnv:
+    # UPDATED: Keys now use underscores to match openenv.yaml tasks
     SCENARIOS = {
-        "payment failure": {
+        "payment_failure": {
             "initial_logs": ["[Alert] user_checkout_error: payment gateway latency spike detected at cluster-504"],
             "keywords": ["payment", "gateway", "latency"],
             "resolution_paths": {
@@ -24,7 +25,7 @@ class OrchestratorEnv:
                 "technical": {"run_command": "restart_service", "send_slack": "devops"}
             }
         },
-        "deployment crash": {
+        "deployment_crash": {
             "initial_logs": ["[Alert] pod_crash_loop: FATAL signal 9 in pod-32-deploy-manager during sync"],
             "keywords": ["crash", "pod", "deploy"],
             "resolution_paths": {
@@ -32,7 +33,7 @@ class OrchestratorEnv:
                 "restart": {"run_command": "restart_cluster", "send_slack": "devops"}
             }
         },
-        "customer complaint": {
+        "customer_complaint": {
             "initial_logs": ["[Ticket#993] User states unable to login, site returns constant 500 error on auth endpoint"],
             "keywords": ["complaint", "login", "auth", "500"],
             "resolution_paths": {
@@ -42,8 +43,13 @@ class OrchestratorEnv:
         }
     }
 
-    def reset(self):
-        self.scenario_name = random.choice(list(self.SCENARIOS.keys()))
+    def reset(self, scenario_name=None):
+        # UPDATED: Allow resetting to a specific scenario provided by the orchestrator
+        if scenario_name and scenario_name in self.SCENARIOS:
+            self.scenario_name = scenario_name
+        else:
+            self.scenario_name = random.choice(list(self.SCENARIOS.keys()))
+            
         self.scenario = self.SCENARIOS[self.scenario_name]
         
         path_scores = []
@@ -217,4 +223,5 @@ class OrchestratorEnv:
         if steps <= 4:
             score += 0.1
 
+        # This clamping ensures scores are strictly (0, 1)
         return min(max(score, 0.01), 0.99)

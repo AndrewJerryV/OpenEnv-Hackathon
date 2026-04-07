@@ -65,15 +65,18 @@ async def main():
     steps = 0
 
     try:
-        state = env.reset()
-        # openenv.yaml expects "agentic_orchestrator" to match config exactly for task tracking.
-        log_start("agentic_orchestrator", "custom_env", MODEL_NAME)
+        # UPDATED: Get the target task name from the validator environment
+        # Default to payment_failure if not set (for local testing)
+        target_task = os.getenv("TASK_NAME", "payment_failure")
+        
+        state = env.reset(scenario_name=target_task)
+        
+        # UPDATED: Log the dynamic task name so the grader recognizes it
+        log_start(target_task, "custom_env", MODEL_NAME)
 
         for step in range(1, MAX_STEPS + 1):
             action_str = get_action(state)
-
             action = Action.parse(action_str)
-
             result = env.step(action)
 
             reward = result["reward"]
@@ -88,10 +91,9 @@ async def main():
             if done:
                 break
 
-        max_score = state.get("max_score", 24.0)
-        # use environment grader score
+        # Use environment grader score
         score = result.get("score", 0.5)
-        # enforce strict (0,1)
+        # Enforce strict (0,1) range to satisfy the validator
         score = min(max(score, 0.01), 0.99)
         success = score > 0.6
 
