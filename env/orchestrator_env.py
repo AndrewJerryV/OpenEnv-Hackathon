@@ -1,22 +1,23 @@
+from openenv.core import Environment, Action, Observation
+from pydantic import Field
+from typing import Dict, Any, List
 import random
 
-class Action:
-    def __init__(self, type, value):
-        self.type = type
-        self.value = value
+class OrchestratorAction(Action):
+    type: str = Field(..., description="Action type")
+    value: str = Field(default="", description="Action value")
 
     @staticmethod
-    def parse(text):
+    def parse(text: str) -> "OrchestratorAction":
         parts = text.strip().split(" ", 1)
         if len(parts) == 2:
-            return Action(parts[0], parts[1])
+            return OrchestratorAction(type=parts[0], value=parts[1])
         elif len(parts) == 1 and parts[0]:
-            return Action(parts[0], "")
-        return Action("noop", "")
+            return OrchestratorAction(type=parts[0], value="")
+        return OrchestratorAction(type="noop", value="")
 
-from openenv.core import Environment
-
-from openenv.core import Environment, Observation
+class OrchestratorObservation(Observation):
+    pass
 
 class OrchestratorEnv(Environment):
     SCENARIOS = {
@@ -88,7 +89,7 @@ class OrchestratorEnv(Environment):
             "accumulated_cost": 0.0,
             "chaos_failures": 0,
         }
-        return Observation(
+        return OrchestratorObservation(
             done=False,
             reward=0.0,
             metadata=self._state
@@ -123,7 +124,7 @@ class OrchestratorEnv(Environment):
             self._state["noise_level"] += 1
             self.add_observation("ERROR", "Sequence violation detected: Redundant duplicate action.")
             if self._state["noise_level"] > 3: reward -= 1
-            return {"reward": reward, "done": done, "error": error}
+            return OrchestratorObservation(reward=reward, done=done, metadata=self._state)
             
         self._state["action_history"].append(action_repr)
 
@@ -234,7 +235,7 @@ class OrchestratorEnv(Environment):
             reward -= 1
 
         self._state["done"] = done
-        return Observation(
+        return OrchestratorObservation(
             done=done,
             reward=reward,
             metadata={
