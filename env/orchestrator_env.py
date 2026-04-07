@@ -15,7 +15,6 @@ class Action:
         return Action("noop", "")
 
 class OrchestratorEnv:
-    # UPDATED: Keys now use underscores to match openenv.yaml tasks
     SCENARIOS = {
         "payment_failure": {
             "initial_logs": ["[Alert] user_checkout_error: payment gateway latency spike detected at cluster-504"],
@@ -44,7 +43,6 @@ class OrchestratorEnv:
     }
 
     # ── Feature 2: Operational Cost Dictionary ──────────────────────────
-    # Not all actions are equal. The agent is penalised for expensive ops.
     ACTION_COSTS = {
         "search_logs": 0.1,    # Cheap / Safe
         "update_crm":  0.2,    # Administrative
@@ -58,7 +56,6 @@ class OrchestratorEnv:
     TOOL_FLAKINESS_RATE = 0.15   # 15 % failure for run_command
 
     def reset(self, scenario_name=None):
-        # UPDATED: Allow resetting to a specific scenario provided by the orchestrator
         if scenario_name and scenario_name in self.SCENARIOS:
             self.scenario_name = scenario_name
         else:
@@ -84,7 +81,6 @@ class OrchestratorEnv:
             "done": False,
             "noise_level": 0,
             "max_score": self.max_score,
-            # ── New state trackers for cost-aware rewards ───────────
             "accumulated_cost": 0.0,
             "chaos_failures": 0,
         }
@@ -153,13 +149,11 @@ class OrchestratorEnv:
             else:
                 # ── Feature 3: Chaos – 15 % failure rate for run_command ──
                 if action.type == "run_command" and random.random() < self.TOOL_FLAKINESS_RATE:
-                    # Flaky failure: do NOT mark mitigated, return timeout
                     self.state["chaos_failures"] += 1
                     reward -= 2
                     self.state["noise_level"] += 1
                     self.add_observation("ERROR", f"Connection timeout: '{action.value}' did not respond within 30 s. Retry recommended.")
                     self.state["logs"].append(f"[System] TIMEOUT executing '{action.value}' – connection refused by upstream host")
-                    # Remove this action from history so the agent can retry it
                     self.state["action_history"].remove(action_repr)
                 else:
                     valid_resolution = False
@@ -233,10 +227,13 @@ class OrchestratorEnv:
 
         self.state["done"] = done
         return {
+            "observation": self.state,
             "reward": reward,
             "done": done,
-            "error": error,
-            "score": self.compute_score() if done else None
+            "info": {
+                "score": self.compute_score() if done else 0.0,
+                "error": error
+            }
         }
 
     def close(self):
@@ -256,15 +253,10 @@ class OrchestratorEnv:
         if steps <= 4:
             score += 0.1
 
-        # ── Feature 2: Cost-aware score penalty ─────────────────────
-        # Penalise accumulated operational cost (scaled so max ~1.5 cost
-        # maps to ~0.15 score deduction, keeping the range meaningful)
         cost_penalty = self.state["accumulated_cost"] * 0.1
         score -= cost_penalty
 
-        # ── Feature 3: Small bonus for surviving chaos failures ─────
         if self.state["chaos_failures"] > 0 and self.state["mitigated"]:
             score += 0.05   # resilience bonus
 
-        # This clamping ensures scores are strictly (0, 1)
         return min(max(score, 0.01), 0.99)
