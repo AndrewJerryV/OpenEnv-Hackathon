@@ -1,3 +1,14 @@
+---
+title: OpenEnv Hackathon
+emoji: 👀
+colorFrom: indigo
+colorTo: green
+sdk: docker
+pinned: false
+license: mit
+short_description: Stateful RL environment for multi-tool AI agents
+---
+
 <p align="center">
   <h1 align="center">EIRA - Elite Incident Response Agent</h1>
   <p align="center"><strong>An autonomous SRE agent that reasons, optimizes, and self-corrects through live infrastructure incidents.</strong></p>
