@@ -8,7 +8,8 @@ environment:
     build: .
 
 tasks:
-  - name: payment_failure
+  - id: payment_failure
+    name: payment_failure
     description: Resolve payment gateway issue
     max_steps: 8
     grader:
@@ -16,7 +17,8 @@ tasks:
       metric: score
       source: "[END]"
 
-  - name: deployment_crash
+  - id: deployment_crash
+    name: deployment_crash
     description: Fix deployment crash issue
     max_steps: 8
     grader:
@@ -24,7 +26,8 @@ tasks:
       metric: score
       source: "[END]"
 
-  - name: customer_complaint
+  - id: customer_complaint
+    name: customer_complaint
     description: Handle customer complaint issue
     max_steps: 8
     grader:
