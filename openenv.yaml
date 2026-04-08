@@ -34,3 +34,12 @@ tasks:
       type: log_score
       metric: score
       source: "[END]"
+
+  - id: latency_spike
+    name: latency_spike
+    description: Resolve intermittent latency spikes
+    max_steps: 8
+    grader:
+      type: log_score
+      metric: score
+      source: "[END]"

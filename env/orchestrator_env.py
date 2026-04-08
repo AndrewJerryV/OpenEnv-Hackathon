@@ -44,6 +44,14 @@ class OrchestratorEnv(Environment):
                 "standard": {"update_crm": "resolved", "send_slack": "customer"},
                 "technical": {"run_command": "flush_cache", "send_slack": "devops"}
             }
+        },
+        "latency_spike": {
+            "initial_logs": ["[Alert] latency_increase: P99 response time increased to 2500ms on api-gateway-v2"],
+            "keywords": ["latency", "api", "gateway"],
+            "resolution_paths": {
+                "scaling": {"run_command": "resize_cluster", "send_slack": "devops"},
+                "optimization": {"run_command": "clear_logs", "send_slack": "devops"}
+            }
         }
     }
 
