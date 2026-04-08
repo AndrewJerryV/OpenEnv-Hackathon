@@ -12,7 +12,14 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 
 client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN) if HF_TOKEN else None
 
-MAX_STEPS = 8  # Slightly higher to allow for chaos-induced retries
+# MAX_STEPS mapping by task (Sync with openenv.yaml)
+TASK_MAX_STEPS = {
+    "payment_failure": 6,
+    "deployment_crash": 8,
+    "customer_complaint": 10,
+    "latency_spike": 12
+}
+DEFAULT_MAX_STEPS = 8
 
 # LOGGING (STRICT FORMAT)
 def log_start(task, env, model):
@@ -153,7 +160,8 @@ async def main():
         # UPDATED: Log the dynamic task name so the grader recognizes it
         log_start(target_task, "custom_env", MODEL_NAME)
 
-        for step in range(1, MAX_STEPS + 1):
+        max_steps = TASK_MAX_STEPS.get(target_task, DEFAULT_MAX_STEPS)
+        for step in range(1, max_steps + 1):
             thought, action_str = get_action(state)
             
             try:

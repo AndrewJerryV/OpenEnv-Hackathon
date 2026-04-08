@@ -9,37 +9,37 @@ environment:
 
 tasks:
   - id: payment_failure
-    name: payment_failure
-    description: Resolve payment gateway issue
-    max_steps: 8
+    name: "Payment Gateway Failure (Easy)"
+    difficulty: easy
+    max_steps: 6
     grader:
-      type: log_score
+      type: log
       metric: score
-      source: "[END]"
+      regex: "score=([0-9.]+)"
 
   - id: deployment_crash
-    name: deployment_crash
-    description: Fix deployment crash issue
+    name: "Deployment Crash Loop (Medium)"
+    difficulty: medium
     max_steps: 8
     grader:
-      type: log_score
+      type: log
       metric: score
-      source: "[END]"
+      regex: "score=([0-9.]+)"
 
   - id: customer_complaint
-    name: customer_complaint
-    description: Handle customer complaint issue
-    max_steps: 8
+    name: "Complex Customer Complaint (Hard)"
+    difficulty: hard
+    max_steps: 10
     grader:
-      type: log_score
+      type: log
       metric: score
-      source: "[END]"
+      regex: "score=([0-9.]+)"
 
   - id: latency_spike
-    name: latency_spike
-    description: Resolve intermittent latency spikes
-    max_steps: 8
+    name: "Intermittent Latency Spike (Hard)"
+    difficulty: hard
+    max_steps: 12
     grader:
-      type: log_score
+      type: log
       metric: score
-      source: "[END]"
+      regex: "score=([0-9.]+)"
