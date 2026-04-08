@@ -37,6 +37,10 @@ def get_action(state):
     Format:  THOUGHT: <reasoning> | ACTION: <command>
     Falls back gracefully if the LLM doesn't follow the format.
     """
+    # Handle both plain dicts and OpenEnv Observation objects
+    if hasattr(state, "metadata"):
+        state = state.metadata
+    
     task = state["task"]
     logs = state["logs"]
     history = state["action_history"]
@@ -151,12 +155,25 @@ async def main():
 
         for step in range(1, MAX_STEPS + 1):
             thought, action_str = get_action(state)
-            action = Action.parse(action_str)
+            
+            try:
+                action = Action.parse(action_str)
+            except Exception as e:
+                print(f"[ERROR] Failed to parse action '{action_str}': {e}")
+                action = Action(type="noop", value="")
+            
             result = env.step(action)
 
-            reward = result["reward"]
-            done = result["done"]
-            error = result.get("error")
+            if hasattr(result, "metadata"):
+                reward = result.reward
+                done = result.done
+                error = result.metadata.get("info", {}).get("error")
+                result_info = result.metadata.get("info", {})
+            else:
+                reward = result["reward"]
+                done = result["done"]
+                error = result.get("info", {}).get("error") if "info" in result else result.get("error")
+                result_info = result.get("info", {})
 
             rewards.append(reward)
             steps = step
@@ -169,15 +186,14 @@ async def main():
             # Update state for next iteration
             state = env.state
 
-        # Use environment grader score
-        score = result.get("score") if result.get("score") is not None else 0.0
-        # Enforce strict (0,1) range to satisfy the validator
-        score = min(max(score, 0.01), 0.99)
-        success = score > 0.6
+        final_score = result_info.get("score", 0.01) if 'result_info' in locals() else 0.01
+        final_score = min(max(final_score, 0.01), 0.99)
+
+        success = final_score > 0.6
+        log_end(success, steps, final_score, rewards)
 
     finally:
         env.close()
-        log_end(success, steps, score, rewards)
 
 if __name__ == "__main__":
     asyncio.run(main())

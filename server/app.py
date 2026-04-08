@@ -1,18 +1,23 @@
-from fastapi import FastAPI
+from openenv.core.env_server.http_server import create_app
 from fastapi.responses import HTMLResponse
 import uvicorn
+from env.orchestrator_env import OrchestratorEnv, Action, Observation
 
-app = FastAPI()
+def env_factory():
+    return OrchestratorEnv()
 
-@app.post("/reset")
-def reset():
-    return {"status": "ok"}
+app = create_app(
+    env=env_factory, 
+    env_name="agentic-orchestrator",
+    action_cls=Action,
+    observation_cls=Observation
+)
 
 @app.get("/", response_class=HTMLResponse)
 def home():
     return """
     <h2>Agentic Orchestrator Environment</h2>
-    <p>Use /reset endpoint to interact with environment.</p>
+    <p>Environment is running successfully. API is ready.</p>
     """
 
 def main():

@@ -1,6 +1,6 @@
+spec_version: 1
 name: agentic-orchestrator
 version: 1.0
-
 entrypoint: inference.py
 
 environment:
@@ -8,14 +8,29 @@ environment:
     build: .
 
 tasks:
-  - name: payment_failure
+  - id: payment_failure
+    name: payment_failure
     description: Resolve payment gateway issue
-    max_steps: 6
+    max_steps: 8
+    grader:
+      type: log_score
+      metric: score
+      source: "[END]"
 
-  - name: deployment_crash
+  - id: deployment_crash
+    name: deployment_crash
     description: Fix deployment crash issue
-    max_steps: 6
+    max_steps: 8
+    grader:
+      type: log_score
+      metric: score
+      source: "[END]"
 
-  - name: customer_complaint
+  - id: customer_complaint
+    name: customer_complaint
     description: Handle customer complaint issue
-    max_steps: 6
+    max_steps: 8
+    grader:
+      type: log_score
+      metric: score
+      source: "[END]"
