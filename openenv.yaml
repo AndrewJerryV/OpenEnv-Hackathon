@@ -1,6 +1,11 @@
 spec_version: 1
 name: agentic-orchestrator
-version: 1.0
+version: "1.0"
+description: "An agentic incident response orchestrator environment where AI agents resolve live infrastructure incidents through structured tool use."
+type: space
+runtime: fastapi
+app: server.app:app
+port: 7860
 entrypoint: inference.py
 
 environment:
@@ -9,31 +14,22 @@ environment:
 
 tasks:
   - id: payment_failure
-    name: "Payment Gateway Resolution (Easy)"
+    name: "Payment Gateway Resolution"
+    description: "Resolve a payment gateway latency spike by identifying root cause, applying mitigation, and notifying the appropriate team."
     difficulty: easy
     max_steps: 6
-    graders:
-      - type: agent
-        metric: reward
-        source: "[END]"
-        regex: "score=([0-9.]+)"
+    grader: "graders:grade_payment_failure"
 
   - id: deployment_crash
-    name: "Deployment Crash Recovery (Medium)"
+    name: "Deployment Crash Recovery"
+    description: "Recover from a pod crash loop by diagnosing the failure, performing rollback or restart, and notifying DevOps."
     difficulty: medium
     max_steps: 8
-    graders:
-      - type: agent
-        metric: reward
-        source: "[END]"
-        regex: "score=([0-9.]+)"
+    grader: "graders:grade_deployment_crash"
 
   - id: customer_complaint
-    name: "Complex Customer Orchestration (Hard)"
+    name: "Complex Customer Orchestration"
+    description: "Resolve a customer authentication failure by investigating logs, flushing cache or updating CRM, and notifying the support team."
     difficulty: hard
     max_steps: 12
-    graders:
-      - type: agent
-        metric: reward
-        source: "[END]"
-        regex: "score=([0-9.]+)"
+    grader: "graders:grade_customer_complaint"
