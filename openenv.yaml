@@ -1,35 +1,57 @@
-spec_version: 1
-name: agentic-orchestrator
 version: "1.0"
-description: "An agentic incident response orchestrator environment where AI agents resolve live infrastructure incidents through structured tool use."
-type: space
-runtime: fastapi
-app: server.app:app
-port: 7860
-entrypoint: inference.py
 
 environment:
-  docker:
-    build: .
+  name: agentic-orchestrator
+  entry_point: app.py
+  action_cls: Action
+  observation_cls: Observation
 
 tasks:
-  - id: payment_failure
-    name: "Payment Gateway Resolution"
-    description: "Resolve a payment gateway latency spike by identifying root cause, applying mitigation, and notifying the appropriate team."
-    difficulty: easy
+  - name: payment_failure
+    description: >
+      Resolve a live payment gateway latency spike. Search logs to identify
+      the root cause, apply the correct mitigation action, and notify the
+      appropriate team via Slack before closing the incident.
     max_steps: 6
-    grader: "graders:grade_payment_failure"
+    grader:
+      type: threshold
+      metric: score
+      threshold: 0.60
+      aggregation: last
 
-  - id: deployment_crash
-    name: "Deployment Crash Recovery"
-    description: "Recover from a pod crash loop by diagnosing the failure, performing rollback or restart, and notifying DevOps."
-    difficulty: medium
+  - name: deployment_crash
+    description: >
+      Diagnose and recover from a pod crash-loop during a deployment sync.
+      Search logs to confirm the root cause, execute the correct rollback or
+      restart command, notify the devops team, and finish the task.
     max_steps: 8
-    grader: "graders:grade_deployment_crash"
+    grader:
+      type: threshold
+      metric: score
+      threshold: 0.60
+      aggregation: last
 
-  - id: customer_complaint
-    name: "Complex Customer Orchestration"
-    description: "Resolve a customer authentication failure by investigating logs, flushing cache or updating CRM, and notifying the support team."
-    difficulty: hard
+  - name: customer_complaint
+    description: >
+      Investigate and resolve a customer-reported login failure returning
+      HTTP 500 on the auth endpoint. Identify the root cause via log search,
+      apply the correct CRM update or cache flush, notify the right channel,
+      and close the incident.
+    max_steps: 10
+    grader:
+      type: threshold
+      metric: score
+      threshold: 0.60
+      aggregation: last
+
+  - name: latency_spike
+    description: >
+      Triage a P99 latency spike on api-gateway-v2 that has breached 2500 ms.
+      Search logs to confirm the root cause, execute the appropriate scaling
+      or optimisation command, notify the devops team, and finish the task.
     max_steps: 12
-    grader: "graders:grade_customer_complaint"
+    grader:
+      type: threshold
+      metric: score
+      threshold: 0.60
+      aggregation: last
