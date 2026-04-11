@@ -20,7 +20,7 @@ tasks:
     count: 6
     grader:
       type: code
-      module: graders:grade_payment_failure
+      module: grader:grade
 
   - id: deployment_crash
     name: "Deployment Crash Recovery"
@@ -29,7 +29,7 @@ tasks:
     count: 8
     grader:
       type: code
-      module: graders:grade_deployment_crash
+      module: grader:grade
 
   - id: customer_complaint
     name: "Complex Customer Orchestration"
@@ -38,7 +38,7 @@ tasks:
     count: 10
     grader:
       type: code
-      module: graders:grade_customer_complaint
+      module: grader:grade
 
   - id: latency_spike
     name: "API Latency Spike Resolution"
@@ -47,4 +47,4 @@ tasks:
     count: 10
     grader:
       type: code
-      module: graders:grade_latency_spike
+      module: grader:grade
