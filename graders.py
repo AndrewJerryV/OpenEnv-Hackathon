@@ -1,42 +1,24 @@
-"""
-Grader functions for each task.
-Each grader receives the environment interaction log and returns a score in [0.0, 1.0].
+def grade_payment_failure(trajectory) -> float:
+    return _grade(trajectory)
 
-The Scaler platform discovers these via the `grader:` field in openenv.yaml,
-which uses the Python import path format: `graders:grade_<task_name>`.
-"""
-import re
+def grade_deployment_crash(trajectory) -> float:
+    return _grade(trajectory)
 
+def grade_customer_complaint(trajectory) -> float:
+    return _grade(trajectory)
 
-def _extract_end_score(stdout: str) -> float:
-    """Parse the [END] log line to extract the score."""
-    match = re.search(r"\[END\].*?score=([0-9.]+)", stdout)
-    if match:
-        return min(max(float(match.group(1)), 0.0), 1.0)
-    return 0.0
+def grade_latency_spike(trajectory) -> float:
+    return _grade(trajectory)
 
-
-def _extract_rewards(stdout: str) -> list:
-    """Parse the [END] log line to extract individual step rewards."""
-    match = re.search(r"\[END\].*?rewards=([0-9.,]+)", stdout)
-    if match:
-        return [float(r) for r in match.group(1).split(",") if r]
-    return []
-
-
-def grade_payment_failure(stdout: str, **kwargs) -> float:
-    """Grade the payment_failure task. Returns score in [0.0, 1.0]."""
-    score = _extract_end_score(stdout)
-    return score
-
-
-def grade_deployment_crash(stdout: str, **kwargs) -> float:
-    """Grade the deployment_crash task. Returns score in [0.0, 1.0]."""
-    score = _extract_end_score(stdout)
-    return score
-
-
-def grade_customer_complaint(stdout: str, **kwargs) -> float:
-    """Grade the customer_complaint task. Returns score in [0.0, 1.0]."""
-    score = _extract_end_score(stdout)
-    return score
+def _grade(trajectory) -> float:
+    logs = " ".join(str(s) for s in trajectory)
+    score = 0.0
+    if "root_found" in logs or "Root cause confirmed" in logs:
+        score += 0.3
+    if "mitigated" in logs or "System state stabilized" in logs:
+        score += 0.3
+    if "notified" in logs or "Notification dispatched" in logs:
+        score += 0.3
+    if logs.count("[STEP]") <= 4:
+        score += 0.1
+    return min(max(score, 0.01), 0.99)
