@@ -17,26 +17,34 @@ tasks:
     name: "Payment Gateway Resolution"
     description: "Resolve a payment gateway latency spike by identifying root cause, applying mitigation, and notifying the appropriate team."
     difficulty: easy
-    max_steps: 6
-    grader: "graders:grade_payment_failure"
+    count: 6
+    grader:
+      type: code
+      module: graders:grade_payment_failure
 
   - id: deployment_crash
     name: "Deployment Crash Recovery"
     description: "Recover from a pod crash loop by diagnosing the failure, performing rollback or restart, and notifying DevOps."
     difficulty: medium
-    max_steps: 8
-    grader: "graders:grade_deployment_crash"
+    count: 8
+    grader:
+      type: code
+      module: graders:grade_deployment_crash
 
   - id: customer_complaint
     name: "Complex Customer Orchestration"
     description: "Resolve a customer authentication failure by investigating logs, flushing cache or updating CRM, and notifying the support team."
     difficulty: hard
-    max_steps: 12
-    grader: "graders:grade_customer_complaint"
+    count: 10
+    grader:
+      type: code
+      module: graders:grade_customer_complaint
 
   - id: latency_spike
     name: "API Latency Spike Resolution"
     description: "Triage a P99 latency spike on api-gateway-v2, execute the correct scaling or optimisation command, notify devops, and close the incident."
     difficulty: medium
-    max_steps: 12
-    grader: "graders:grade_latency_spike"
+    count: 10
+    grader:
+      type: code
+      module: graders:grade_latency_spike
