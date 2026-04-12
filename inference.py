@@ -32,10 +32,10 @@ def log_step(step, action, reward, done, error, thought=""):
     print(f"AGENT_REASONING: {thought}") 
     print(f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error}", flush=True)
 
-def log_end(success, steps, score, rewards):
+# MODIFICATION: Added 'task' argument and formatted it in the print statement
+def log_end(task, success, steps, score, rewards):
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
-
+    print(f"[END] task={task} success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
 
 # ── Feature 1: Chain-of-Thought (CoT) Prompting & Parsing ────────────
 def get_action(state):
@@ -103,7 +103,7 @@ def parse_thought_action(raw_text: str):
     Parse the LLM output into (thought, action).
     Handles multiple formats robustly:
       - THOUGHT: ... | ACTION: ...
-      - THOUGHT: ...\\nACTION: ...
+      - THOUGHT: ...\nACTION: ...
       - Just action text (fallback)
     """
     thought = ""
@@ -147,58 +147,58 @@ async def main():
 
     env = OrchestratorEnv()
 
-    rewards: List[float] = []
-    steps = 0
-
     try:
-        # UPDATED: Get the target task name from the validator environment
-        # Default to payment_failure if not set (for local testing)
-        target_task = os.getenv("TASK_NAME", "payment_failure")
-        
-        state = env.reset(scenario_name=target_task)
-        
-        # UPDATED: Log the dynamic task name so the grader recognizes it
-        log_start(target_task, "custom_env", MODEL_NAME)
-
-        max_steps = TASK_MAX_STEPS.get(target_task, DEFAULT_MAX_STEPS)
-        for step in range(1, max_steps + 1):
-            thought, action_str = get_action(state)
+        # MODIFICATION: Loop through ALL tasks in TASK_MAX_STEPS
+        for target_task, max_steps in TASK_MAX_STEPS.items():
+            state = env.reset(scenario_name=target_task)
             
-            try:
-                action = Action.parse(action_str)
-            except Exception as e:
-                print(f"[ERROR] Failed to parse action '{action_str}': {e}")
-                action = Action(type="noop", value="")
+            log_start(target_task, "custom_env", MODEL_NAME)
+
+            rewards: List[float] = []
+            steps = 0
+            result_info = {}
+
+            for step in range(1, max_steps + 1):
+                thought, action_str = get_action(state)
+                
+                try:
+                    action = Action.parse(action_str)
+                except Exception as e:
+                    print(f"[ERROR] Failed to parse action '{action_str}': {e}")
+                    action = Action(type="noop", value="")
+                
+                result = env.step(action)
+
+                if hasattr(result, "metadata"):
+                    reward = result.reward
+                    done = result.done
+                    error = result.metadata.get("info", {}).get("error")
+                    result_info = result.metadata.get("info", {})
+                else:
+                    reward = result["reward"]
+                    done = result["done"]
+                    error = result.get("info", {}).get("error") if "info" in result else result.get("error")
+                    result_info = result.get("info", {})
+
+                rewards.append(reward)
+                steps = step
+
+                log_step(step, f"{action.type} {action.value}".strip(), reward, done, error, thought=thought)
+
+                if done:
+                    break
+
+                # Update state for next iteration
+                state = env.state
+
+            # MODIFICATION: Clamp score strictly between 0.01 and 0.99
+            final_score = result_info.get("score", 0.01) if result_info else 0.01
+            final_score = max(0.01, min(0.99, float(final_score)))
+
+            success = final_score > 0.6
             
-            result = env.step(action)
-
-            if hasattr(result, "metadata"):
-                reward = result.reward
-                done = result.done
-                error = result.metadata.get("info", {}).get("error")
-                result_info = result.metadata.get("info", {})
-            else:
-                reward = result["reward"]
-                done = result["done"]
-                error = result.get("info", {}).get("error") if "info" in result else result.get("error")
-                result_info = result.get("info", {})
-
-            rewards.append(reward)
-            steps = step
-
-            log_step(step, f"{action.type} {action.value}".strip(), reward, done, error, thought=thought)
-
-            if done:
-                break
-
-            # Update state for next iteration
-            state = env.state
-
-        final_score = result_info.get("score", 0.01) if 'result_info' in locals() else 0.01
-        final_score = min(max(final_score, 0.01), 0.99)
-
-        success = final_score > 0.6
-        log_end(success, steps, final_score, rewards)
+            # MODIFICATION: Pass target_task into log_end
+            log_end(target_task, success, steps, final_score, rewards)
 
     finally:
         env.close()
